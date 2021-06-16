@@ -102,15 +102,9 @@ variable "tezos_network" {
   default = "mainnet"
 }
 
-variable "tezos_sentry_version" {
+variable "tezos_version" {
   type =string
-  description = "The Tezos container version for sentry (public) nodes. Should be hard-coded to a version from https://hub.docker.com/r/tezos/tezos/tags. Not recommended to set to a rolling tag like 'mainnet', because it may break unexpectedly. Example: `v8.1`."
-  default = "latest-release"
-}
-
-variable "tezos_private_version" {
-  type =string
-  description = "The Tezos container version for private node. Should be hard-coded to a version from https://hub.docker.com/r/tezos/tezos/tags. Not recommended to set to a rolling tag like 'mainnet', because it may break unexpectedly. Example: `v8.1`."
+  description = "The Tezos container version for the baking node. Should be hard-coded to a version from https://hub.docker.com/r/tezos/tezos/tags. Not recommended to set to a rolling tag like 'mainnet', because it may break unexpectedly. Example: `v8.1`."
   default = "latest-release"
 }
 
@@ -123,7 +117,7 @@ variable "signer_target_host_key" {
 variable "protocols" {
   type = list
   description = "The list of Tezos protocols currently in use, following the naming convention used in the baker/endorser binary names, for example 007-PsDELPH1. Baking and endorsing daemons will be spun up for every protocol provided in the list, which helps for seamless protocol updates."
-  default = [ "007-PsDELPH1", "008-PtEdoTez" ]
+  default = [ "009-PsFLoren" ]
   validation {
     condition     = length(sort(var.protocols)) == length(distinct(sort(var.protocols)))
     error_message = "You must pass different protocols, passing the same protocol twice is not allowed as it introduces double-baking risk."
@@ -143,12 +137,6 @@ variable "history_mode" {
 }
 
 variable "node_storage_size" {
-  type = string
-  description = "Storage size for the nodes, in gibibytes (GiB)."
-  default = "15"
-}
-
-variable "public_node_storage_size" {
   type = string
   description = "Storage size for the nodes, in gibibytes (GiB)."
   default = "15"

@@ -20,15 +20,10 @@ cat << EOF > ${node_dir}/data/config.json
   "network": "$TEZOS_NETWORK",
   "rpc": { "listen-addrs": [ ":8732", "0.0.0.0:8732" ] },
   "p2p":
-    { "private-mode": true,
-      "bootstrap-peers":
-        [ "${KUBERNETES_NAME_PREFIX}-tezos-public-node-0.${KUBERNETES_NAME_PREFIX}-tezos-public-node",
-          "${KUBERNETES_NAME_PREFIX}-tezos-public-node-1.${KUBERNETES_NAME_PREFIX}-tezos-public-node" ],
-      "listen-addr": "[::]:9732",
-      "limits":
-        { "connection-timeout": 10, "min-connections": 1,
-          "expected-connections": 2, "max-connections": 4,
-          "max_known_points": [ 32, 24 ], "max_known_peer_ids": [ 32, 24 ] } },
+    { "limits":
+        { "connection-timeout": 10, "min-connections": 25,
+          "max-connections": 75, "max_known_points": [ 400, 300 ],
+          "max_known_peer_ids": [ 400, 300 ] } },
   "shell": { "chain_validator": { "bootstrap_threshold": 1 },
              "history_mode": "$HISTORY_MODE" } }
 EOF

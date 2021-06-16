@@ -1,6 +1,6 @@
 locals {
   kubernetes_variables = { "project" : module.terraform-gke-blockchain.project,
-       "tezos_private_version": var.tezos_private_version,
+       "tezos_version": var.tezos_version,
        "tezos_network": var.tezos_network,
        "baking_nodes": var.baking_nodes,
        "kubernetes_namespace": var.kubernetes_namespace,
@@ -12,7 +12,6 @@ locals {
        "monitoring_email_from": var.monitoring_email_from,
        "history_mode": var.history_mode,
        "node_storage_size": var.node_storage_size,
-       "public_node_storage_size": var.public_node_storage_size,
        "rpc_public_hostname": var.rpc_public_hostname,
        "protocols": var.protocols,
        "snapshot_url": var.snapshot_url,
@@ -37,8 +36,7 @@ build_container () {
   cd $1
   container=$(basename $1)
   cp Dockerfile.template Dockerfile
-  sed -i "s/((tezos_sentry_version))/${var.tezos_sentry_version}/" Dockerfile
-  sed -i "s/((tezos_private_version))/${var.tezos_private_version}/" Dockerfile
+  sed -i "s/((tezos_version))/${var.tezos_version}/" Dockerfile
   cat << EOY > cloudbuild.yaml
 steps:
 - name: 'gcr.io/cloud-builders/docker'
@@ -102,34 +100,16 @@ cat <<EOK > kustomization.yaml
 ${templatefile("${path.module}/../k8s/kustomization.yaml.tmpl", local.kubernetes_variables)}
 EOK
 
-mkdir -pv tezos-public-node
-cat <<EOK > tezos-public-node/kustomization.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/kustomization.yaml.tmpl", local.kubernetes_variables)}
+mkdir -pv tezos-common
+cat <<EOK > tezos-common/kustomization.yaml
+${templatefile("${path.module}/../k8s/tezos-common-tmpl/kustomization.yaml.tmpl", local.kubernetes_variables)}
 EOK
-cat <<EORPP > tezos-public-node/regionalpvpatch.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/regionalpvpatch.yaml.tmpl",
-   { "regional_pd_zones" : join(", ", var.node_locations),
-     "kubernetes_name_prefix": var.kubernetes_name_prefix})}
-EORPP
-cat <<EOPPVN > tezos-public-node/prefixedpvnode.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/prefixedpvnode.yaml.tmpl", local.kubernetes_variables)}
-EOPPVN
-cat <<EONPN > tezos-public-node/nodepool.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/nodepool.yaml.tmpl", {"kubernetes_pool_name": var.kubernetes_pool_name})}
-EONPN
-cat <<EONPN > tezos-public-node/nodecount.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/nodecount.yaml.tmpl", {"public_node_count": length(var.node_locations)})}
-EONPN
-cat <<EONPN > tezos-public-node/service-patch.yaml
-${templatefile("${path.module}/../k8s/tezos-public-node-tmpl/service-patch.yaml.tmpl", local.kubernetes_variables)}
-EONPN
-
 mkdir -pv tezos-public-rpc
 cat <<EOK > tezos-public-rpc/kustomization.yaml
 ${templatefile("${path.module}/../k8s/tezos-public-rpc-tmpl/kustomization.yaml.tmpl", local.kubernetes_variables)}
 EOK
 cat <<EOP > tezos-public-rpc/static-ip-patch.yaml
-${templatefile("${path.module}/../k8s/tezos-public-rpc-tmpl/static-ip-patch.yaml.tmpl", local.kubernetes_variables)}
+${templatefile("${path.module}/../k8s/tezos-public-rpc-tmpl/static-ip-patch.yaml.tmpl", merge(local.kubernetes_variables, { "nodename": keys(var.baking_nodes)[0] }))}
 EOP
 
 cat <<EOK > tezos-alertmanager/kustomization.yaml
@@ -141,26 +121,29 @@ ${templatefile("${path.module}/../k8s/tezos-alertmanager-tmpl/tezos_alertmanager
 EOMP
 
 %{ for nodename in keys(var.baking_nodes) }
-mkdir -pv tezos-private-node-${nodename}
-cat <<EOK > tezos-private-node-${nodename}/kustomization.yaml
-${templatefile("${path.module}/../k8s/tezos-private-node-tmpl/kustomization.yaml.tmpl", merge(local.kubernetes_variables, { "nodename": nodename, "protocols": var.protocols }))}
+mkdir -pv tezos-node-${nodename}
+cat <<EOK > tezos-node-${nodename}/kustomization.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/kustomization.yaml.tmpl", merge(local.kubernetes_variables, { "nodename": nodename, "protocols": var.protocols }))}
 EOK
 # the two below are necessary because kustomize embedded in the most recent version of kubectl does not apply prefix to volume class
-cat <<EOPVN > tezos-private-node-${nodename}/prefixedpvnode.yaml
-${templatefile("${path.module}/../k8s/tezos-private-node-tmpl/prefixedpvnode.yaml.tmpl", local.kubernetes_variables)}
+cat <<EOPVN > tezos-node-${nodename}/prefixedpvnode.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/prefixedpvnode.yaml.tmpl", local.kubernetes_variables)}
 EOPVN
-cat <<EONPN > tezos-private-node-${nodename}/replicas.yaml
-${templatefile("${path.module}/../k8s/tezos-private-node-tmpl/replicas.yaml.tmpl", local.kubernetes_variables)}
+cat <<EONPN > tezos-node-${nodename}/replicas.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/replicas.yaml.tmpl", local.kubernetes_variables)}
 EONPN
-cat <<EONPN > tezos-private-node-${nodename}/nodepool.yaml
-${templatefile("${path.module}/../k8s/tezos-private-node-tmpl/nodepool.yaml.tmpl", {"kubernetes_pool_name": var.kubernetes_pool_name})}
+cat <<EONPN > tezos-node-${nodename}/nodepool.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/nodepool.yaml.tmpl", {"kubernetes_pool_name": var.kubernetes_pool_name})}
 EONPN
+cat <<EOSP > tezos-node-${nodename}/service-patch.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/service-patch.yaml.tmpl", local.kubernetes_variables)}
+EOSP
 
 %{ for baker_name in keys(var.baking_nodes[nodename]) }
 
 %{ for protocol in var.protocols }
-cat <<EOBEP > tezos-private-node-${nodename}/baker_endorser_process_patch_${baker_name}_${protocol}.yaml
-${templatefile("${path.module}/../k8s/tezos-private-node-tmpl/baker_endorser_process_patch.yaml.tmpl", {"baker_name": baker_name, "protocol": protocol})}
+cat <<EOBEP > tezos-node-${nodename}/baker_endorser_process_patch_${baker_name}_${protocol}.yaml
+${templatefile("${path.module}/../k8s/tezos-node-tmpl/baker_endorser_process_patch.yaml.tmpl", {"baker_name": baker_name, "protocol": protocol})}
 EOBEP
 %{ endfor }
 

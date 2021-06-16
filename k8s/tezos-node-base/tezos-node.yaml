@@ -1,30 +1,31 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: tezos-private-baking-node
+  name: tezos-node
   labels:
-    app: tezos-private-baking-node
+    app: tezos-node
 spec:
   ports:
   - port: 9732
     name: p2p
+  - port: 8732
+    name: rpc
   - port: 9489
     name: metrics
   - port: 4247
     name: nonce-exposer
   selector:
-    app: tezos-private-baking-node
-  clusterIP: None
+    app: tezos-node
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tezos-private-baking-node-policy
+  name: tezos-node-policy
   namespace: default
 spec:
   podSelector:
     matchLabels:
-      app: tezos-private-baking-node
+      app: tezos-node
   policyTypes:
   - Ingress
   - Egress
@@ -44,7 +45,7 @@ spec:
     to:
     - podSelector:
         matchLabels:
-          app: tezos-private-baking-node
+          app: tezos-node
   - ports:
     - port: 8445
       protocol: TCP
@@ -55,16 +56,19 @@ spec:
   - ports:
     - port: 9732
       protocol: TCP
-    to:
-    - podSelector:
-        matchLabels:
-          app: tezos-public-node
   ingress:
   - ports:
     - port: 53
       protocol: TCP
     - port: 53
       protocol: UDP
+  - ports:
+    - port: 8732
+      protocol: TCP
+    from:
+    - podSelector:
+        matchLabels:
+          app: trd-payout-sender
   - ports:
     - port: 9489
       protocol: TCP
@@ -77,17 +81,13 @@ spec:
   - ports:
     - port: 9732
       protocol: TCP
-    from:
-    - podSelector:
-        matchLabels:
-          app: tezos-public-node
   - ports:
     - port: 4247
       protocol: TCP
     from:
     - podSelector:
         matchLabels:
-          app: tezos-private-baking-node
+          app: tezos-node
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -106,7 +106,7 @@ spec:
     from:
     - podSelector:
         matchLabels:
-          app: tezos-private-baking-node
+          app: tezos-node
   - ports:
     - port: 8404
       protocol: TCP
@@ -120,21 +120,21 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: tezos-private-baking-node
+  name: tezos-node
 spec:
-  serviceName: "tezos-private-baking-node"
+  serviceName: "tezos-node"
   selector:
     matchLabels:
-      app: tezos-private-baking-node
+      app: tezos-node
   template:
     metadata:
       labels:
-        app: tezos-private-baking-node
+        app: tezos-node
     spec:
       securityContext:
         fsGroup: 100
       containers:
-      - name: tezos-private-node
+      - name: tezos-node
         image: tezos/tezos
         args: [ "tezos-node" ]
         ports:
@@ -143,7 +143,7 @@ spec:
         - containerPort: 8732
           name: tezos-rpc-port
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         resources:
           limits:
@@ -160,12 +160,12 @@ spec:
         - name: NODE_HOST
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: NODE_HOST
         - name: PROTOCOL
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: PROTOCOL
         resources:
           limits:
@@ -181,7 +181,7 @@ spec:
         - name: KUBERNETES_NAME_PREFIX
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: KUBERNETES_NAME_PREFIX
       - name: tezos-nonce-exposer
         image: tezos-nonce-exposer
@@ -189,7 +189,7 @@ spec:
           limits:
             cpu: 0
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         imagePullPolicy: Always
         ports:
@@ -201,7 +201,7 @@ spec:
           limits:
             cpu: 0
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         imagePullPolicy: Always
       - name: tezos-sidecar
@@ -211,17 +211,17 @@ spec:
             cpu: 0
         imagePullPolicy: Always
       initContainers:
-      - name: tezos-private-node-configurator
-        image: tezos-private-node-configurator
+      - name: tezos-node-configurator
+        image: tezos-node-configurator
         resources:
           limits:
             cpu: 0
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         envFrom:
         - configMapRef:
-            name: tezos-private-node-configmap
+            name: tezos-node-configmap
         imagePullPolicy: Always
       - name: tezos-snapshot-downloader
         image: tezos-snapshot-downloader
@@ -229,18 +229,18 @@ spec:
           limits:
             cpu: 0
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         env:
         - name: TEZOS_NETWORK
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: TEZOS_NETWORK
         - name: SNAPSHOT_URL
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: SNAPSHOT_URL
         imagePullPolicy: Always
       - name: tezos-key-importer
@@ -249,7 +249,7 @@ spec:
         - name: KUBERNETES_NAME_PREFIX
           valueFrom:
             configMapKeyRef:
-              name: tezos-private-node-configmap
+              name: tezos-node-configmap
               key: KUBERNETES_NAME_PREFIX
         - name: SIGNER_DATA
           valueFrom:
@@ -257,57 +257,9 @@ spec:
               name: signer-secret
               key: SIGNER_DATA
         volumeMounts:
-        - name: tezos-private-node-pv-claim
+        - name: tezos-node-pv-claim
           mountPath: /var/run/tezos
         resources:
           limits:
             cpu: 0
         imagePullPolicy: Always
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app: prometheus-xtz
-    release: mon-xtz
-  name: tezos-private-node-monitoring
-spec:
-  endpoints:
-  - interval: 15s
-    port: metrics
-    path: /metrics
-  selector:
-    matchLabels:
-      app: tezos-private-baking-node
----
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  labels:
-    app: prometheus-xtz
-    release: mon-xtz
-    prometheus: prometheus-xtz
-    role: alert-rules
-  name: tezos-private-node-rules
-spec:
-  groups:
-  - name: tezos-private-node
-    rules:
-    - alert: PrivateNodeLost1Connection
-      annotations:
-        description: 'Private node lost one connection to pubic node'
-        summary: Private node has less than the expected number of connections
-      expr: sum(tezos_node_connections{private="false",pod=~".*-tezos-private-baking-node-.*"}) < 2
-      for: 1m
-      labels:
-        alerting_target: blockchain_cluster_alerter
-        severity: critical
-    - alert: PrivateNodeDisconnected
-      annotations:
-        description: 'Private node lost all connections to public nodes'
-        summary: Private node has no connnection to public nodes
-      expr: sum(tezos_node_connections{private="false",pod=~".*-tezos-private-baking-node-.*"}) == 0
-      for: 1m
-      labels:
-        alerting_target: blockchain_cluster_alerter
-        severity: critical
